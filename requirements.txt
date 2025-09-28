@@ -1,0 +1,7 @@
+# No additional packages required for basic functionality
+# tkinter comes with Python standard library
+# sqlite3 comes with Python standard library
+
+# Optional packages for enhanced functionality:
+# pillow>=9.0.0  # For image handling if needed in the future
+# matplotlib>=3.5.0  # For charts and graphs if needed in the future
