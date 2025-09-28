@@ -1,10 +1,385 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 import sqlite3
+import math
 from datetime import datetime
 
 
+def create_rounded_rectangle(canvas, x1, y1, x2, y2, radius=15, **kwargs):
+    """Create a rounded rectangle on a canvas using arcs and lines"""
+    if radius > (x2 - x1) / 2:
+        radius = (x2 - x1) / 2
+    if radius > (y2 - y1) / 2:
+        radius = (y2 - y1) / 2
+
+    # Create the rounded rectangle using multiple shapes and return all IDs
+    elements = []
+
+    # Main rectangles
+    elements.append(canvas.create_rectangle(x1 + radius, y1, x2 - radius, y2, outline="", **kwargs))
+    elements.append(canvas.create_rectangle(x1, y1 + radius, x2, y2 - radius, outline="", **kwargs))
+
+    # Corners (ovals)
+    elements.append(canvas.create_oval(x1, y1, x1 + 2*radius, y1 + 2*radius, outline="", **kwargs))  # Top-left
+    elements.append(canvas.create_oval(x2 - 2*radius, y1, x2, y1 + 2*radius, outline="", **kwargs))  # Top-right
+    elements.append(canvas.create_oval(x1, y2 - 2*radius, x1 + 2*radius, y2, outline="", **kwargs))  # Bottom-left
+    elements.append(canvas.create_oval(x2 - 2*radius, y2 - 2*radius, x2, y2, outline="", **kwargs))  # Bottom-right
+
+    return elements
+
+# Add method to Canvas class
+tk.Canvas.create_rounded_rectangle = create_rounded_rectangle
+
+
 class FinanceApp:
+    def create_rounded_button(self, parent, text, command, bg_color, fg_color, font, width=140, height=45, corner_radius=12):
+        """Create a button with rounded corners using Canvas"""
+        # Get parent background color
+        try:
+            parent_bg = parent.cget('bg')
+        except:
+            parent_bg = "#2c2c2c"
+
+        canvas = tk.Canvas(parent, width=width, height=height, highlightthickness=0, bg=parent_bg, bd=0)
+
+        # Create rounded rectangle and store all element IDs
+        button_elements = canvas.create_rounded_rectangle(
+            2, 2, width - 2, height - 2,
+            radius=corner_radius, fill=bg_color
+        )
+
+        # Add text
+        text_id = canvas.create_text(
+            width // 2, height // 2,
+            text=text, fill=fg_color, font=font
+        )
+
+        # Store references for hover effect
+        canvas.bg_color = bg_color
+        canvas.text_id = text_id
+        canvas.button_elements = button_elements
+
+        # Bind click event
+        canvas.bind("<Button-1>", lambda e: command())
+        canvas.bind("<Enter>", lambda e: self.on_button_hover_enter(canvas))
+        canvas.bind("<Leave>", lambda e: self.on_button_hover_leave(canvas))
+        canvas.configure(cursor="hand2")
+
+        return canvas
+
+    def on_button_hover_enter(self, canvas):
+        """Handle button hover enter"""
+        hover_color = self.darken_color(canvas.bg_color)
+        # Update all button elements
+        if hasattr(canvas, 'button_elements'):
+            for element_id in canvas.button_elements:
+                try:
+                    canvas.itemconfig(element_id, fill=hover_color)
+                except:
+                    pass
+
+    def on_button_hover_leave(self, canvas):
+        """Handle button hover leave"""
+        # Restore original color for all button elements
+        if hasattr(canvas, 'button_elements'):
+            for element_id in canvas.button_elements:
+                try:
+                    canvas.itemconfig(element_id, fill=canvas.bg_color)
+                except:
+                    pass
+
+    def darken_color(self, color):
+        """Darken a hex color"""
+        if color.startswith('#'):
+            hex_color = color[1:]
+            rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+            darkened = tuple(max(0, int(c * 0.8)) for c in rgb)
+            return '#%02x%02x%02x' % darkened
+        return color
+
+    def create_rounded_entry(self, parent, font, width=200, height=35, corner_radius=8):
+        """Create an entry widget with rounded corners"""
+        try:
+            parent_bg = parent.cget('bg')
+        except:
+            parent_bg = "#404040"
+
+        # Container frame
+        container = tk.Frame(parent, bg=parent_bg)
+
+        # Canvas for rounded background
+        canvas = tk.Canvas(container, width=width, height=height, highlightthickness=0, bg=parent_bg, bd=0)
+        canvas.pack()
+
+        # Create rounded rectangle background
+        canvas.create_rounded_rectangle(
+            1, 1, width - 1, height - 1,
+            radius=corner_radius, fill="white"
+        )
+
+        # Entry widget
+        entry = tk.Entry(
+            canvas,
+            font=font,
+            bg="white",
+            fg="#2c2c2c",
+            relief="flat",
+            bd=0,
+            highlightthickness=0
+        )
+
+        # Position entry in center of canvas
+        canvas.create_window(width//2, height//2, window=entry, width=width-20, height=height-10)
+
+        return container, entry
+
+    def create_rounded_frame(self, parent, bg_color, width, height, corner_radius=15):
+        """Create a frame with rounded corners using Canvas"""
+        try:
+            parent_bg = parent.cget('bg')
+        except:
+            parent_bg = "#2c2c2c"
+
+        canvas = tk.Canvas(parent, width=width, height=height, highlightthickness=0, bg=parent_bg, bd=0)
+
+        # Create rounded rectangle
+        canvas.create_rounded_rectangle(
+            0, 0, width, height,
+            radius=corner_radius, fill=bg_color
+        )
+
+        return canvas
+
+    def show_custom_popup(self, title, message, popup_type="info"):
+        """Create a custom popup window without system frames"""
+        # Create toplevel window
+        popup = tk.Toplevel(self.root)
+        popup.overrideredirect(True)  # Remove system window decorations
+        popup.configure(bg="#2c2c2c")
+
+        # Calculate size and position
+        width = 450
+        height = 250
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (width // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (height // 2)
+        popup.geometry(f"{width}x{height}+{x}+{y}")
+
+        # Make popup modal
+        popup.transient(self.root)
+
+        # Main container with rounded appearance
+        main_frame = tk.Frame(popup, bg="#2c2c2c")
+        main_frame.pack(fill="both", expand=True, padx=8, pady=8)
+
+        # Inner frame with rounded background
+        inner_frame = tk.Frame(main_frame, bg="#3a3a3a")
+        inner_frame.pack(fill="both", expand=True, padx=4, pady=4)
+
+        # Title section
+        title_frame = tk.Frame(inner_frame, bg="#3a3a3a")
+        title_frame.pack(fill="x", pady=(15, 10))
+
+        title_label = tk.Label(
+            title_frame,
+            text=title,
+            font=("Poppins", 14, "bold"),
+            fg="white",
+            bg="#3a3a3a"
+        )
+        title_label.pack()
+
+        # Message section
+        message_frame = tk.Frame(inner_frame, bg="#3a3a3a")
+        message_frame.pack(fill="both", expand=True, pady=(0, 20))
+
+        message_label = tk.Label(
+            message_frame,
+            text=message,
+            font=("Poppins", 11),
+            fg="#e0e0e0",
+            bg="#3a3a3a",
+            wraplength=400,
+            justify="center"
+        )
+        message_label.pack(expand=True, pady=(10, 20))
+
+        # Button section
+        button_frame = tk.Frame(inner_frame, bg="#3a3a3a")
+        button_frame.pack(pady=(0, 15))
+
+        # Determine button color based on popup type
+        button_colors = {
+            "info": "#2196F3",
+            "success": "#4CAF50",
+            "warning": "#FF9800",
+            "error": "#f44336"
+        }
+        button_color = button_colors.get(popup_type, "#2196F3")
+
+        # Rounded close button
+        close_btn = self.create_rounded_button(
+            button_frame,
+            text="Cerrar",
+            command=popup.destroy,
+            bg_color=button_color,
+            fg_color="white",
+            font=("Poppins", 11, "bold"),
+            width=100,
+            height=40,
+            corner_radius=10
+        )
+        close_btn.pack()
+
+        # Add subtle shadow effect with multiple frames
+        shadow_frame1 = tk.Frame(popup, bg="#1a1a1a", height=2)
+        shadow_frame1.place(x=2, y=height-2, width=width-2)
+
+        shadow_frame2 = tk.Frame(popup, bg="#1a1a1a", width=2)
+        shadow_frame2.place(x=width-2, y=2, height=height-2)
+
+        # Bind Escape key to close
+        popup.bind('<Escape>', lambda e: popup.destroy())
+
+        # Make sure window is visible before grab_set
+        popup.update_idletasks()
+        popup.grab_set()
+
+        # Focus on popup
+        popup.focus_set()
+
+        return popup
+
+    def show_info_popup(self, message):
+        """Show an info popup"""
+        return self.show_custom_popup("Información", message, "info")
+
+    def show_success_popup(self, message):
+        """Show a success popup"""
+        return self.show_custom_popup("Éxito", message, "success")
+
+    def show_warning_popup(self, message):
+        """Show a warning popup"""
+        return self.show_custom_popup("Advertencia", message, "warning")
+
+    def show_error_popup(self, message):
+        """Show an error popup"""
+        return self.show_custom_popup("Error", message, "error")
+
+    def show_confirmation_popup(self, title, message):
+        """Show a confirmation popup with Yes/No buttons"""
+        # Create toplevel window
+        popup = tk.Toplevel(self.root)
+        popup.overrideredirect(True)
+        popup.configure(bg="#2c2c2c")
+
+        # Calculate size and position
+        width = 480
+        height = 260
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (width // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (height // 2)
+        popup.geometry(f"{width}x{height}+{x}+{y}")
+
+        # Make popup modal
+        popup.transient(self.root)
+
+        # Store result
+        result = {"value": False}
+
+        # Main container
+        main_frame = tk.Frame(popup, bg="#2c2c2c")
+        main_frame.pack(fill="both", expand=True, padx=8, pady=8)
+
+        inner_frame = tk.Frame(main_frame, bg="#3a3a3a")
+        inner_frame.pack(fill="both", expand=True, padx=4, pady=4)
+
+        # Title
+        title_frame = tk.Frame(inner_frame, bg="#3a3a3a")
+        title_frame.pack(fill="x", pady=(15, 10))
+
+        title_label = tk.Label(
+            title_frame,
+            text=title,
+            font=("Poppins", 14, "bold"),
+            fg="white",
+            bg="#3a3a3a"
+        )
+        title_label.pack()
+
+        # Message
+        message_frame = tk.Frame(inner_frame, bg="#3a3a3a")
+        message_frame.pack(fill="both", expand=True, pady=(0, 20))
+
+        message_label = tk.Label(
+            message_frame,
+            text=message,
+            font=("Poppins", 11),
+            fg="#e0e0e0",
+            bg="#3a3a3a",
+            wraplength=420,
+            justify="center"
+        )
+        message_label.pack(expand=True, pady=(10, 20))
+
+        # Buttons
+        button_frame = tk.Frame(inner_frame, bg="#3a3a3a")
+        button_frame.pack(pady=(0, 15))
+
+        def on_yes():
+            result["value"] = True
+            popup.destroy()
+
+        def on_no():
+            result["value"] = False
+            popup.destroy()
+
+        # Yes button
+        yes_btn = self.create_rounded_button(
+            button_frame,
+            text="Sí",
+            command=on_yes,
+            bg_color="#4CAF50",
+            fg_color="white",
+            font=("Poppins", 11, "bold"),
+            width=80,
+            height=35,
+            corner_radius=8
+        )
+        yes_btn.pack(side="left", padx=(0, 10))
+
+        # No button
+        no_btn = self.create_rounded_button(
+            button_frame,
+            text="No",
+            command=on_no,
+            bg_color="#f44336",
+            fg_color="white",
+            font=("Poppins", 11, "bold"),
+            width=80,
+            height=35,
+            corner_radius=8
+        )
+        no_btn.pack(side="left")
+
+        # Shadow effect
+        shadow_frame1 = tk.Frame(popup, bg="#1a1a1a", height=2)
+        shadow_frame1.place(x=2, y=height-2, width=width-2)
+
+        shadow_frame2 = tk.Frame(popup, bg="#1a1a1a", width=2)
+        shadow_frame2.place(x=width-2, y=2, height=height-2)
+
+        # Bind keys
+        popup.bind('<Return>', lambda e: on_yes())
+        popup.bind('<Escape>', lambda e: on_no())
+
+        # Make sure window is visible before grab_set
+        popup.update_idletasks()
+        popup.grab_set()
+
+        popup.focus_set()
+        popup.wait_window()  # Wait for window to close
+
+        return result["value"]
+
     def __init__(self, root):
         self.root = root
         self.root.title("Coiner - Gestor Financiero Personal")
@@ -162,10 +537,14 @@ class FinanceApp:
         # Create notebook for income categories
         style = ttk.Style()
         style.theme_use('clam')
-        style.configure('TNotebook', background='#2c2c2c', borderwidth=0)
+        style.configure('TNotebook', background='#2c2c2c', borderwidth=0, tabmargins=0)
         style.configure('TNotebook.Tab', background='#404040', foreground='white',
-                       padding=[20, 8], borderwidth=0, focuscolor='none')
+                       padding=[20, 8], borderwidth=0, focuscolor='none', relief='flat')
         style.map('TNotebook.Tab', background=[('selected', '#505050')])
+
+        # Configure combobox to be flat
+        style.configure('TCombobox', fieldbackground='white', borderwidth=0, relief='flat')
+        style.configure('TCombobox.Listbox', background='white', borderwidth=0)
 
         income_notebook = ttk.Notebook(income_frame)
         income_notebook.pack(fill="both", expand=True, padx=15, pady=(0, 15))
@@ -182,15 +561,18 @@ class FinanceApp:
 
     def create_income_form(self, parent, income_type):
         """Create income form for specific type"""
-        # Form frame
-        form_frame = tk.Frame(parent, bg="#3a3a3a")
-        form_frame.pack(pady=15, padx=20, fill="x")
+        # Form frame with rounded appearance
+        outer_frame = tk.Frame(parent, bg="#3a3a3a")
+        outer_frame.pack(pady=15, padx=20, fill="x")
+
+        form_frame = tk.Frame(outer_frame, bg="#404040")
+        form_frame.pack(pady=8, padx=8, fill="x", ipady=12, ipadx=12)
 
         tk.Label(
             form_frame,
             text="Valor:",
             fg="white",
-            bg="#3a3a3a",
+            bg="#404040",
             font=("Poppins", 10, "bold"),
         ).pack(anchor="w")
         amount_entry = tk.Entry(
@@ -199,15 +581,16 @@ class FinanceApp:
             bg="white",
             fg="#2c2c2c",
             relief="flat",
-            bd=1
+            bd=0,
+            highlightthickness=0
         )
-        amount_entry.pack(fill="x", pady=(5, 12))
+        amount_entry.pack(fill="x", pady=(5, 12), padx=4, ipady=6)
 
         tk.Label(
             form_frame,
             text="Descripción:",
             fg="white",
-            bg="#3a3a3a",
+            bg="#404040",
             font=("Poppins", 10, "bold"),
         ).pack(anchor="w")
         desc_entry = tk.Entry(
@@ -216,9 +599,10 @@ class FinanceApp:
             bg="white",
             fg="#2c2c2c",
             relief="flat",
-            bd=1
+            bd=0,
+            highlightthickness=0
         )
-        desc_entry.pack(fill="x", pady=(5, 12))
+        desc_entry.pack(fill="x", pady=(5, 12), padx=4, ipady=6)
 
         # Category based on type (from HolaMundo.xlsx)
         categories = {
@@ -245,7 +629,7 @@ class FinanceApp:
             form_frame,
             text="Categoría:",
             fg="white",
-            bg="#3a3a3a",
+            bg="#404040",
             font=("Poppins", 10, "bold"),
         ).pack(anchor="w")
         category_combo = ttk.Combobox(
@@ -253,48 +637,59 @@ class FinanceApp:
             values=categories[income_type],
             font=("Poppins", 11),
         )
-        category_combo.pack(fill="x", pady=(5, 15))
+        category_combo.pack(fill="x", pady=(5, 15), padx=4, ipady=4)
 
-        add_btn = tk.Button(
+        # Rounded Add button
+        add_btn = self.create_rounded_button(
             form_frame,
             text="Agregar",
             command=lambda: self.add_transaction(
                 income_type, amount_entry, desc_entry, category_combo
             ),
-            bg="#4CAF50",
-            fg="white",
+            bg_color="#4CAF50",
+            fg_color="white",
             font=("Poppins", 11, "bold"),
-            cursor="hand2",
-            relief="flat",
-            bd=0,
-            padx=20,
-            pady=8
+            width=140,
+            height=45
         )
         add_btn.pack(pady=12)
 
-        # List frame
-        list_frame = tk.Frame(parent, bg="#3a3a3a")
-        list_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        # List frame with rounded appearance
+        list_outer_frame = tk.Frame(parent, bg="#3a3a3a")
+        list_outer_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        list_frame = tk.Frame(list_outer_frame, bg="#454545")
+        list_frame.pack(fill="both", expand=True, padx=8, pady=8, ipady=8, ipadx=8)
 
         # Scrollable listbox
-        listbox_frame = tk.Frame(list_frame, bg="#3a3a3a")
+        listbox_frame = tk.Frame(list_frame, bg="#454545")
         listbox_frame.pack(fill="both", expand=True)
 
-        scrollbar = tk.Scrollbar(listbox_frame, bg="#4a4a4a", troughcolor="#3a3a3a")
+        scrollbar = tk.Scrollbar(
+            listbox_frame,
+            bg="#505050",
+            troughcolor="#454545",
+            bd=0,
+            highlightthickness=0,
+            relief="flat",
+            width=12
+        )
         scrollbar.pack(side="right", fill="y")
 
         listbox = tk.Listbox(
             listbox_frame,
             yscrollcommand=scrollbar.set,
             font=("Poppins", 9),
-            bg="#4a4a4a",
+            bg="#505050",
             fg="white",
             relief="flat",
             bd=0,
-            selectbackground="#5a5a5a",
-            selectforeground="white"
+            highlightthickness=0,
+            selectbackground="#606060",
+            selectforeground="white",
+            activestyle="none"
         )
-        listbox.pack(fill="both", expand=True, padx=(0, 2))
+        listbox.pack(fill="both", expand=True, padx=(4, 16), pady=4)
         scrollbar.config(command=listbox.yview)
 
         # Store references
@@ -306,27 +701,29 @@ class FinanceApp:
         # Bind selection event to update allocations
         listbox.bind('<<ListboxSelect>>', lambda event: self.on_income_select(event, income_type))
 
-        # Delete button
-        delete_btn = tk.Button(
+        # Rounded Delete button
+        delete_btn = self.create_rounded_button(
             list_frame,
             text="Eliminar Seleccionado",
             command=lambda: self.delete_transaction(income_type),
-            bg="#f44336",
-            fg="white",
+            bg_color="#f44336",
+            fg_color="white",
             font=("Poppins", 9, "bold"),
-            relief="flat",
-            bd=0,
-            padx=15,
-            pady=5,
-            cursor="hand2"
+            width=180,
+            height=35,
+            corner_radius=8
         )
         delete_btn.pack(pady=8)
 
     def create_allocations_section(self):
         """Create allocations section below income area"""
-        allocations_frame = tk.Frame(self.root, bg="#3a3a3a", height=100)
-        allocations_frame.pack(fill="x", padx=20, pady=(10, 0))
-        allocations_frame.pack_propagate(False)
+        # Outer frame for rounded appearance
+        allocations_outer_frame = tk.Frame(self.root, bg="#2c2c2c", height=110)
+        allocations_outer_frame.pack(fill="x", padx=20, pady=(10, 0))
+        allocations_outer_frame.pack_propagate(False)
+
+        allocations_frame = tk.Frame(allocations_outer_frame, bg="#3a3a3a")
+        allocations_frame.pack(fill="both", expand=True, padx=8, pady=8, ipady=8, ipadx=8)
 
         # Title
         title_label = tk.Label(
@@ -334,7 +731,7 @@ class FinanceApp:
             text="Asignaciones Automáticas (Selecciona un ingreso)",
             font=("Poppins", 12, "bold"),
             fg="white",
-            bg="#3a3a3a",
+            bg="#404040",
         )
         title_label.pack(pady=(10, 5))
 
@@ -348,7 +745,7 @@ class FinanceApp:
             text="Ahorro (10%): $0",
             font=("Poppins", 11, "bold"),
             fg="#81C784",
-            bg="#3a3a3a",
+            bg="#404040",
         )
         self.selected_ahorro_label.pack(side="left", padx=20)
 
@@ -358,7 +755,7 @@ class FinanceApp:
             text="Pago Deuda (5%): $0",
             font=("Poppins", 11, "bold"),
             fg="#FFB74D",
-            bg="#3a3a3a",
+            bg="#404040",
         )
         self.selected_deuda_label.pack(side="left", padx=20)
 
@@ -368,7 +765,7 @@ class FinanceApp:
             text="Inversión (10%): $0",
             font=("Poppins", 11, "bold"),
             fg="#64B5F6",
-            bg="#3a3a3a",
+            bg="#404040",
         )
         self.selected_inversion_label.pack(side="left", padx=20)
 
@@ -381,9 +778,12 @@ class FinanceApp:
             # Get selected item text
             selected_text = listbox.get(selection[0])
 
-            # Extract amount from the text (format: "Description - Category: $Amount")
+            # Extract amount from the text (format: "$amount - description (category) | ID: id_val")
             try:
-                amount_str = selected_text.split(": $")[1].replace(",", "")
+                # Split by " - " and take the first part which contains "$amount"
+                amount_part = selected_text.split(" - ")[0]
+                # Remove the "$" and any commas, then convert to float
+                amount_str = amount_part.replace("$", "").replace(",", "")
                 amount = float(amount_str)
 
                 # Calculate allocations for this specific income
@@ -396,8 +796,9 @@ class FinanceApp:
                 self.selected_deuda_label.config(text=f"Pago Deuda (5%): ${deuda:,.0f}")
                 self.selected_inversion_label.config(text=f"Inversión (10%): ${inversion:,.0f}")
 
-            except (IndexError, ValueError):
+            except (IndexError, ValueError) as e:
                 # Reset if can't parse amount
+                print(f"Error parsing amount from: {selected_text} - {e}")
                 self.selected_ahorro_label.config(text="Ahorro (10%): $0")
                 self.selected_deuda_label.config(text="Pago Deuda (5%): $0")
                 self.selected_inversion_label.config(text="Inversión (10%): $0")
@@ -443,15 +844,18 @@ class FinanceApp:
 
     def create_expense_form(self, parent, expense_type):
         """Create expense form for specific type"""
-        # Form frame
-        form_frame = tk.Frame(parent, bg="#3a3a3a")
-        form_frame.pack(pady=15, padx=20, fill="x")
+        # Form frame with rounded appearance
+        outer_frame = tk.Frame(parent, bg="#3a3a3a")
+        outer_frame.pack(pady=15, padx=20, fill="x")
+
+        form_frame = tk.Frame(outer_frame, bg="#404040")
+        form_frame.pack(pady=8, padx=8, fill="x", ipady=12, ipadx=12)
 
         tk.Label(
             form_frame,
             text="Valor:",
             fg="white",
-            bg="#3a3a3a",
+            bg="#404040",
             font=("Poppins", 10, "bold"),
         ).pack(anchor="w")
         amount_entry = tk.Entry(
@@ -460,15 +864,16 @@ class FinanceApp:
             bg="white",
             fg="#2c2c2c",
             relief="flat",
-            bd=1
+            bd=0,
+            highlightthickness=0
         )
-        amount_entry.pack(fill="x", pady=(5, 12))
+        amount_entry.pack(fill="x", pady=(5, 12), padx=4, ipady=6)
 
         tk.Label(
             form_frame,
             text="Descripción:",
             fg="white",
-            bg="#3a3a3a",
+            bg="#404040",
             font=("Poppins", 10, "bold"),
         ).pack(anchor="w")
         desc_entry = tk.Entry(
@@ -477,9 +882,10 @@ class FinanceApp:
             bg="white",
             fg="#2c2c2c",
             relief="flat",
-            bd=1
+            bd=0,
+            highlightthickness=0
         )
-        desc_entry.pack(fill="x", pady=(5, 12))
+        desc_entry.pack(fill="x", pady=(5, 12), padx=4, ipady=6)
 
         # Categories based on type (from HolaMundo.xlsx)
         categories = {
@@ -524,7 +930,7 @@ class FinanceApp:
             form_frame,
             text="Categoría:",
             fg="white",
-            bg="#3a3a3a",
+            bg="#404040",
             font=("Poppins", 10, "bold"),
         ).pack(anchor="w")
         category_combo = ttk.Combobox(
@@ -532,48 +938,59 @@ class FinanceApp:
             values=categories[expense_type],
             font=("Poppins", 11),
         )
-        category_combo.pack(fill="x", pady=(5, 15))
+        category_combo.pack(fill="x", pady=(5, 15), padx=4, ipady=4)
 
-        add_btn = tk.Button(
+        # Rounded Add button for expenses
+        add_btn = self.create_rounded_button(
             form_frame,
             text="Agregar",
             command=lambda: self.add_transaction(
                 expense_type, amount_entry, desc_entry, category_combo
             ),
-            bg="#FF5722",
-            fg="white",
+            bg_color="#FF5722",
+            fg_color="white",
             font=("Poppins", 11, "bold"),
-            cursor="hand2",
-            relief="flat",
-            bd=0,
-            padx=20,
-            pady=8
+            width=140,
+            height=45
         )
         add_btn.pack(pady=12)
 
-        # List frame
-        list_frame = tk.Frame(parent, bg="#3a3a3a")
-        list_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        # List frame with rounded appearance
+        list_outer_frame = tk.Frame(parent, bg="#3a3a3a")
+        list_outer_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        list_frame = tk.Frame(list_outer_frame, bg="#454545")
+        list_frame.pack(fill="both", expand=True, padx=8, pady=8, ipady=8, ipadx=8)
 
         # Scrollable listbox
-        listbox_frame = tk.Frame(list_frame, bg="#3a3a3a")
+        listbox_frame = tk.Frame(list_frame, bg="#454545")
         listbox_frame.pack(fill="both", expand=True)
 
-        scrollbar = tk.Scrollbar(listbox_frame, bg="#4a4a4a", troughcolor="#3a3a3a")
+        scrollbar = tk.Scrollbar(
+            listbox_frame,
+            bg="#505050",
+            troughcolor="#454545",
+            bd=0,
+            highlightthickness=0,
+            relief="flat",
+            width=12
+        )
         scrollbar.pack(side="right", fill="y")
 
         listbox = tk.Listbox(
             listbox_frame,
             yscrollcommand=scrollbar.set,
             font=("Poppins", 9),
-            bg="#4a4a4a",
+            bg="#505050",
             fg="white",
             relief="flat",
             bd=0,
-            selectbackground="#5a5a5a",
-            selectforeground="white"
+            highlightthickness=0,
+            selectbackground="#606060",
+            selectforeground="white",
+            activestyle="none"
         )
-        listbox.pack(fill="both", expand=True, padx=(0, 2))
+        listbox.pack(fill="both", expand=True, padx=(4, 16), pady=4)
         scrollbar.config(command=listbox.yview)
 
         # Store references
@@ -584,30 +1001,28 @@ class FinanceApp:
         else:
             self.innecesarios_listbox = listbox
 
-        # Delete button
-        delete_btn = tk.Button(
+        # Rounded Delete button for expenses
+        delete_btn = self.create_rounded_button(
             list_frame,
             text="Eliminar Seleccionado",
             command=lambda: self.delete_transaction(expense_type),
-            bg="#f44336",
-            fg="white",
+            bg_color="#f44336",
+            fg_color="white",
             font=("Poppins", 9, "bold"),
-            relief="flat",
-            bd=0,
-            padx=15,
-            pady=5,
-            cursor="hand2"
+            width=180,
+            height=35,
+            corner_radius=8
         )
         delete_btn.pack(pady=8)
 
     def create_summary_section(self):
         """Create comprehensive summary section"""
-        summary_frame = tk.Frame(self.root, bg="#333333", height=140)
+        summary_frame = tk.Frame(self.root, bg="#2c2c2c", height=140)
         summary_frame.pack(fill="x", side="bottom", padx=20, pady=(0, 20))
         summary_frame.pack_propagate(False)
 
         # Top row - Income totals
-        top_frame = tk.Frame(summary_frame, bg="#333333")
+        top_frame = tk.Frame(summary_frame, bg="#2c2c2c")
         top_frame.pack(fill="x", pady=(10, 5))
 
         self.income_fixed_label = tk.Label(
@@ -615,7 +1030,7 @@ class FinanceApp:
             text="Ingresos Fijos: $0",
             font=("Poppins", 11, "bold"),
             fg="#4CAF50",
-            bg="#333333",
+            bg="#2c2c2c",
         )
         self.income_fixed_label.pack(side="left", padx=15)
 
@@ -624,7 +1039,7 @@ class FinanceApp:
             text="Ingresos Variables: $0",
             font=("Poppins", 11, "bold"),
             fg="#4CAF50",
-            bg="#333333",
+            bg="#2c2c2c",
         )
         self.income_variable_label.pack(side="left", padx=15)
 
@@ -633,12 +1048,12 @@ class FinanceApp:
             text="Total Ingresos (A): $0",
             font=("Poppins", 12, "bold"),
             fg="#66BB6A",
-            bg="#333333",
+            bg="#2c2c2c",
         )
         self.total_income_label.pack(side="right", padx=15)
 
         # Middle row - Expenses
-        middle_frame = tk.Frame(summary_frame, bg="#333333")
+        middle_frame = tk.Frame(summary_frame, bg="#2c2c2c")
         middle_frame.pack(fill="x", pady=2)
 
         self.indispensable_label = tk.Label(
@@ -646,7 +1061,7 @@ class FinanceApp:
             text="Indispensables: $0",
             font=("Poppins", 10),
             fg="#FF7043",
-            bg="#333333",
+            bg="#2c2c2c",
         )
         self.indispensable_label.pack(side="left", padx=15)
 
@@ -655,7 +1070,7 @@ class FinanceApp:
             text="Necesarios: $0",
             font=("Poppins", 10),
             fg="#FF7043",
-            bg="#333333",
+            bg="#2c2c2c",
         )
         self.necesarios_label.pack(side="left", padx=15)
 
@@ -664,7 +1079,7 @@ class FinanceApp:
             text="Innecesarios: $0",
             font=("Poppins", 10),
             fg="#FF7043",
-            bg="#333333",
+            bg="#2c2c2c",
         )
         self.innecesarios_label.pack(side="left", padx=15)
 
@@ -673,12 +1088,12 @@ class FinanceApp:
             text="Total Egresos (C): $0",
             font=("Poppins", 12, "bold"),
             fg="#FF5722",
-            bg="#333333",
+            bg="#2c2c2c",
         )
         self.total_expenses_label.pack(side="right", padx=15)
 
         # Bottom row - Automatic calculations and balance
-        bottom_frame = tk.Frame(summary_frame, bg="#333333")
+        bottom_frame = tk.Frame(summary_frame, bg="#2c2c2c")
         bottom_frame.pack(fill="x", pady=(5, 10))
 
         self.ahorro_label = tk.Label(
@@ -686,7 +1101,7 @@ class FinanceApp:
             text="Ahorro (10%): $0",
             font=("Poppins", 10),
             fg="#81C784",
-            bg="#333333",
+            bg="#2c2c2c",
         )
         self.ahorro_label.pack(side="left", padx=15)
 
@@ -695,7 +1110,7 @@ class FinanceApp:
             text="Pago Deuda (5%): $0",
             font=("Poppins", 10),
             fg="#FFB74D",
-            bg="#333333",
+            bg="#2c2c2c",
         )
         self.deuda_label.pack(side="left", padx=15)
 
@@ -704,7 +1119,7 @@ class FinanceApp:
             text="Inversión (10%): $0",
             font=("Poppins", 10),
             fg="#64B5F6",
-            bg="#333333",
+            bg="#2c2c2c",
         )
         self.inversion_label.pack(side="left", padx=15)
 
@@ -713,7 +1128,7 @@ class FinanceApp:
             text="Balance Final: $0",
             font=("Poppins", 14, "bold"),
             fg="white",
-            bg="#333333",
+            bg="#2c2c2c",
         )
         self.balance_label.pack(side="right", padx=15)
 
@@ -765,7 +1180,7 @@ class FinanceApp:
             category = category_combo.get()
 
             if not description or not category:
-                messagebox.showerror("Error", "Por favor completa todos los campos")
+                self.show_error_popup("Por favor completa todos los campos")
                 return
 
             date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -794,10 +1209,10 @@ class FinanceApp:
             category_combo.set("")
 
             self.load_data()
-            messagebox.showinfo("Éxito", "Transacción agregada exitosamente!")
+            self.show_success_popup("Transacción agregada exitosamente!")
 
         except ValueError:
-            messagebox.showerror("Error", "Por favor ingresa un valor válido")
+            self.show_error_popup("Por favor ingresa un valor válido")
 
     def delete_transaction(self, transaction_type):
         """Delete selected transaction"""
@@ -816,9 +1231,7 @@ class FinanceApp:
 
         selection = listbox.curselection()
         if not selection:
-            messagebox.showwarning(
-                "Advertencia", "Por favor selecciona una transacción para eliminar"
-            )
+            self.show_warning_popup("Por favor selecciona una transacción para eliminar")
             return
 
         # Get the transaction ID from the selected item
@@ -828,7 +1241,7 @@ class FinanceApp:
         )
 
         if transaction_id:
-            if messagebox.askyesno(
+            if self.show_confirmation_popup(
                 "Confirmar", "¿Estás seguro de que quieres eliminar esta transacción?"
             ):
                 self.cursor.execute(
@@ -836,7 +1249,7 @@ class FinanceApp:
                 )
                 self.conn.commit()
                 self.load_data()
-                messagebox.showinfo("Éxito", "Transacción eliminada exitosamente!")
+                self.show_success_popup("Transacción eliminada exitosamente!")
 
     def load_data(self):
         """Load data from database and update UI for current month"""
